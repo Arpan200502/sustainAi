@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sustain AI Starter</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 760px; margin: 35px auto; padding: 0 16px; color: #20252b; }
+        h1 { margin-bottom: 6px; }
+        .hint { color: #5c6670; margin-top: 0; }
+        section { border: 1px solid #d9dee5; border-radius: 10px; padding: 18px; margin: 18px 0; }
+        label { display: block; margin: 12px 0 6px; font-weight: bold; }
+        input, textarea { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #aeb7c2; border-radius: 6px; font: inherit; }
+        textarea { min-height: 90px; resize: vertical; }
+        button { margin-top: 12px; padding: 10px 15px; border: 0; border-radius: 6px; cursor: pointer; background: #176b4d; color: white; font-weight: bold; }
+        button:disabled { opacity: .6; cursor: wait; }
+        .result { background: #f3f6f8; border-radius: 6px; padding: 12px; margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .entry { border-top: 1px solid #d9dee5; padding: 10px 0; }
+        .status { min-height: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Sustain AI — Starter Project</h1>
+    <p class="hint">A simple Spring Boot backend, PostgreSQL JDBC, and Groq AI example.</p>
+
+    <section>
+        <h2>1. Save data to PostgreSQL</h2>
+        <form id="saveForm">
+            <label for="saveName">Your name</label>
+            <input id="saveName" required maxlength="100" placeholder="e.g. Arpan">
+
+            <label for="message">Message to save</label>
+            <textarea id="message" required placeholder="What sustainability problem are you working on?"></textarea>
+
+            <button type="submit">Save to database</button>
+        </form>
+        <div id="saveResult" class="result status">Your result will appear here.</div>
+    </section>
+
+    <section>
+        <h2>2. Ask Groq AI</h2>
+        <form id="aiForm">
+            <label for="aiName">Your name</label>
+            <input id="aiName" required maxlength="100" placeholder="e.g. Arpan">
+
+            <label for="prompt">Your prompt</label>
+            <textarea id="prompt" required placeholder="Suggest three ways to reduce food waste in a college hostel."></textarea>
+
+            <button type="submit">Ask AI</button>
+        </form>
+        <div id="aiResult" class="result status">The AI reply will appear here.</div>
+    </section>
+
+    <section>
+        <h2>3. Saved database entries</h2>
+        <button id="refreshButton" type="button">Refresh entries</button>
+        <div id="entries" class="result">Loading entries...</div>
+    </section>
+
+    <script>
+        // Form 1: send data to Spring Boot, which saves it using JDBC.
+        document.getElementById("saveForm").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const result = document.getElementById("saveResult");
+            result.textContent = "Saving...";
+
+            try {
+                const response = await fetch("/api/entries", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: document.getElementById("saveName").value,
+                        message: document.getElementById("message").value
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || data.error || "Could not save data.");
+                result.textContent = data.message;
+                document.getElementById("message").value = "";
+                await loadEntries();
+            } catch (error) {
+                result.textContent = "Error: " + error.message;
+            }
+        });
+
+        // Form 2: send the user's name and prompt to the Groq route.
+        document.getElementById("aiForm").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const result = document.getElementById("aiResult");
+            const button = event.submitter;
+            result.textContent = "Waiting for Groq AI...";
+            if (button) button.disabled = true;
+
+            try {
+                const response = await fetch("/api/ai", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: document.getElementById("aiName").value,
+                        prompt: document.getElementById("prompt").value
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || data.error || "AI request failed.");
+                result.textContent = data.reply;
+            } catch (error) {
+                result.textContent = "Error: " + error.message;
+            } finally {
+                if (button) button.disabled = false;
+            }
+        });
+
+        // Read saved entries from the GET route.
+        async function loadEntries() {
+            const target = document.getElementById("entries");
+            try {
+                const response = await fetch("/api/entries");
+                const data = await response.json();
+                if (!response.ok) throw new Error("Could not load entries.");
+                if (data.length === 0) {
+                    target.textContent = "No entries yet. Save the first one above.";
+                    return;
+                }
+
+                // Use textContent rather than injecting user input as HTML.
+                target.replaceChildren();
+                data.forEach(function (entry) {
+                    const item = document.createElement("div");
+                    item.className = "entry";
+                    item.textContent = "#" + entry.id + " — " + entry.name
+                        + ": " + entry.message + " (" + entry.created_at + ")";
+                    target.appendChild(item);
+                });
+            } catch (error) {
+                target.textContent = "Error: " + error.message;
+            }
+        }
+
+        document.getElementById("refreshButton").addEventListener("click", loadEntries);
+        loadEntries();
+    </script>
+</body>
+</html>
